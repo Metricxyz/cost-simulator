@@ -1,0 +1,257 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Costs Simulator</title>
+    <script>
+      (function() {
+        var stored = null;
+        try { stored = window.localStorage.getItem("dashboard-theme"); } catch (err) {}
+        var theme = stored === "dark" || stored === "light"
+          ? stored
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
+    <link rel="stylesheet" href="costs_simulator.css" />
+  </head>
+<body>
+  <h1>Costs Simulator</h1>
+  <p class="intro">
+    Estimate what running a liquidity pool could pay you. Pick a chain and token type and set the
+    daily trading volume you expect - the chart shows your share of the pool's earnings after on-chain
+    costs, and how much volume you need before you start making money. The revenue and gas-cost defaults
+    come from real pools measured across several chains, and every input is adjustable - with finer
+    controls tucked under each Advanced section.
+  </p>
+  <p class="intro"><b>These are estimates, not an offer.</b> Defaults are calibrated as of September 2026 and will drift as chains and markets move.</p>
+  <div class="layout">
+    <!-- ============ SIDEBAR ============ -->
+    <aside class="sidebar">
+      <div class="group">
+        <h3>General</h3>
+        <div class="two-col">
+          <div class="ctl">
+            <label for="chain"><span>Chain <span class="help" data-tip="The blockchain the pool runs on.&#10;Affects the cost side only: base fee, gas token price, block time, update-rate and tip defaults.&#10;The revenue curve depends on pool class, not chain.">?</span></span></label>
+            <select id="chain">
+              <option value="base" selected>Base</option>
+              <option value="ethereum">Ethereum L1</option>
+              <option value="arbitrum">Arbitrum</option>
+              <option value="optimism">Optimism</option>
+              <option value="polygon">Polygon</option>
+              <option value="hyperevm">HyperEVM</option>
+              <option value="robinhood">Robinhood</option>
+            </select>
+          </div>
+          <div class="ctl">
+            <label for="pclass"><span>Pool class <span class="help" data-tip="What the pool trades - loads calibrated revenue defaults.&#10;Stables: pegged pairs (USDC/USDT) - tiny margins, huge volumes.&#10;Majors: blue chips vs USD (WETH/USDC, cbBTC/USDC) - ~1 bp peak, compresses past ~$7M/day.&#10;Alts: long-tail tokens - rich margins that collapse fast with volume.&#10;Volatile/memes: measured on a month of live oracle-quoted pools - entry margin set to 11 bp, a deliberately cautious level rather than the middle of the range, and FLAT in volume across everything observed (a fifth of days are negative, dispersion is extreme). The compression above that is assumed, not measured - and deliberately steeper than the data supports (the data-consistent floor is Vhalf $25M; this uses $10M as a planning haircut), so each extra dollar earns less and marginal revenue turns negative near $11M/day. MTM only: these tokens have no reference price, so Flow P&amp;L is not defined.&#10;Fine-tune below.">?</span></span></label>
+            <select id="pclass">
+              <option value="stables">Stables</option>
+              <option value="majors" selected>Majors</option>
+              <option value="alts">Alts</option>
+              <option value="volatile">Volatile / memes</option>
+            </select>
+          </div>
+        </div>
+        <div class="ctl">
+          <span class="lbl" id="regLbl"><span>Gas regime <span class="help" id="regHelp" data-tip="">?</span></span></span>
+          <div class="seg" role="group" aria-labelledby="regLbl">
+            <button type="button" id="reg0" aria-pressed="false">Calm</button>
+            <button type="button" id="reg1" aria-pressed="true">Median</button>
+            <button type="button" id="reg2" aria-pressed="false">Volatile</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <span class="lbl" id="coLbl"><span>Custom PP <span class="help" data-tip="Our own posted quote (~35k gas per post, one bid/ask pair; the price model runs off-chain so its complexity is gas-free). Cost does not grow with feeds; a multi-pair post adds only ~7k gas per extra pair (see Pools per push).&#10;Toggle off to see the APP alone - both off models a pool that reads an existing on-chain price: no pusher, $0 cost.">?</span></span></span>
+          <div class="seg" role="group" aria-labelledby="coLbl">
+            <button type="button" id="co1" aria-pressed="true">On</button>
+            <button type="button" id="co0" aria-pressed="false">Off</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <span class="lbl" id="beLbl"><span>APP oracle <span class="help" data-tip="The Anchored Price Provider's source oracle - how the anchoring price arrives on-chain:&#10;- Pyth: source-signed payload verified on-chain. ~61k gas single-feed, +10.3k per extra feed.&#10;- Chainlink Data Streams: per-report DON signatures. ~116k single-feed, +61k per extra feed.&#10;Both pushers follow the same trigger policy, so the costs stack. None = no APP (may not be deployed on every chain today).">?</span></span></span>
+          <div class="seg" role="group" aria-labelledby="beLbl">
+            <button type="button" id="ap0" aria-pressed="false">None</button>
+            <button type="button" id="ap1" aria-pressed="true">Pyth</button>
+            <button type="button" id="ap2" aria-pressed="false">Chainlink</button>
+          </div>
+        </div>
+        <div class="vol-group">
+          <div class="ctl">
+            <label for="vcur"><span>Your daily volume <span class="help" data-tip="Marker on all charts. Net P&amp;L, gross and margin are read off at this volume.">?</span></span> <output id="vcurOut"></output></label>
+            <input type="range" id="vcur" min="0" max="1000" step="1" value="254">
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Costs</h3>
+        <div class="ctl">
+          <label for="tol"><span>Push when price moves by (Custom PP) <span class="help" data-tip="The Custom PP's update trigger: post whenever the price drifts this many bps from the last posted value (the APP has its own trigger in Advanced). The '~every X' is the average push interval this implies given the asset's volatility - tighter trigger = more pushes = higher cost.&#10;Default = half the pool's spread at low volume (staleness only becomes exploitable when it approaches the spread): stables 0.35 / majors 0.55 / alts 6.5 / volatile 17.5 bp.&#10;Note: revenue here does NOT react to push speed - in practice a looser trigger also loses revenue to stale-quote pick-offs, so the gas savings from loosening are an upper bound on the net gain.">?</span></span> <output id="tolOut"></output></label>
+          <input type="range" id="tol" min="0" max="100" step="any" value="66.67">
+          <div class="warn" id="tolWarn">&#9888; Beyond ~half the pool's spread, stale quotes get picked off. The model does not link push speed to revenue, so the gas saved here overstates the net gain.</div>
+        </div>
+        <details class="adv">
+          <summary>Advanced - APP cadence, feeds, sharing, chain constants</summary>
+          <div class="ctl">
+            <label for="apptol"><span>Push when price moves by (APP) <span class="help" data-tip="Same trigger logic, but for the APP pusher only (the main slider above governs the Custom PP).&#10;Defaults equal to the Custom PP trigger = same cadence; drag right to post the APP less often and save its gas.">?</span></span> <output id="apptolOut"></output></label>
+            <input type="range" id="apptol" min="0" max="100" step="any" value="66.67">
+          </div>
+          <div class="ctl">
+            <span class="lbl" id="fppLbl"><span>Feeds per pool <span class="help" data-tip="A pair pool like ETH/USDC needs both legs fresh (2 feeds, default); a single-feed pool prices off one.&#10;Both legs ride in one APP push - Pyth signs the batch once (+10.3k per extra feed), Chainlink signs each feed separately (+61k report). The Custom PP is unaffected: one post carries one bid/ask pair regardless.">?</span></span></span>
+            <div class="seg" role="group" aria-labelledby="fppLbl">
+              <button type="button" id="fpp1" aria-pressed="false">1 feed</button>
+              <button type="button" id="fpp2" aria-pressed="true">2 feeds</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <label for="fp"><span>Pools per push <span class="help" data-tip="One push can update several pools, sharing the tx; the gas splits across the pools.&#10;Pyth: +10.3k per extra feed (one signature covers all). Chainlink: +61k (per-feed reports). Custom PP: +6.9k per extra pair with a multi-pair source (measured; a single-pair quote source is assumed by default, so &gt;1 here assumes a multi-pair one).">?</span></span> <output id="fpOut"></output></label>
+            <input type="range" id="fp" min="1" max="16" step="1" value="1">
+          </div>
+          <div class="ctl">
+            <span class="lbl" id="scLbl"><span>No-swap inclusion discount <span class="help" data-tip="Optional Ethereum-only scenario: updates ride in atomic [update, swap] transactions, so a push is only included - and paid - in blocks with a swap against the pool.">?</span></span></span>
+            <div class="seg" role="group" aria-labelledby="scLbl">
+              <button type="button" id="sc0" aria-pressed="true">Off</button>
+              <button type="button" id="sc1" aria-pressed="false">On</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <label for="scsh"><span>Share of blocks with swaps <span class="help" data-tip="Share of blocks with at least one swap against the pool = share of pushes paid.&#10;Defaults are on the busier side of the statistics: stables ~38%, majors ~35%, alts ~21% (busiest day: ~23% / 21% / 7%).">?</span></span> <output id="scshOut"></output></label>
+            <input type="range" id="scsh" min="0" max="100" step="any" value="50">
+          </div>
+          <div class="two-col">
+            <div class="ctl">
+              <label for="basefee"><span>Base fee (gwei) <span class="help" data-tip="The chain's typical base fee, in gwei.&#10;Editable - it moves a lot, especially on Ethereum L1.">?</span></span></label>
+              <input type="number" id="basefee" min="0" step="any" value="0.005">
+            </div>
+            <div class="ctl">
+              <label for="native"><span>Native token $ <span class="help" data-tip="Price of the gas token (ETH, POL, HYPE).&#10;Editable so the gas line stays current.">?</span></span></label>
+              <input type="number" id="native" min="0" step="any" value="2500">
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="group">
+        <h3>Revenue</h3>
+        <div class="ctl">
+          <label for="prot"><span>Protocol fee <span class="help" data-tip="The protocol's cut off gross P&L. Default 20% = the V2 factory default (measured on-chain); deployed configs range 0-20% - V1 pools ran 0% protocol.">?</span></span> <output id="protOut"></output></label>
+          <input type="range" id="prot" min="0" max="30" step="1" value="20">
+        </div>
+        <div class="ctl">
+          <label for="own"><span>Pool owner share <span class="help" data-tip="The pool creator's cut, taken from gross P&L on top of the protocol fee (e.g. 20% + 10% = 30% total; LPs get the remaining 70%).&#10;This is the dashboard's perspective: the owner's cut must cover the full pusher cost stack. Range 0-20%.">?</span></span> <output id="ownOut"></output></label>
+          <input type="range" id="own" min="0" max="20" step="1" value="10">
+        </div>
+        <div class="ctl">
+          <span class="lbl" id="olLbl"><span>Owner is the LP <span class="help" data-tip="The pool owner also provides all the liquidity himself.&#10;The LP share collapses into the owner: he receives everything except the protocol fee, and still pays the full pusher cost stack.&#10;The owner-share slider is ignored while this is on.">?</span></span></span>
+          <div class="seg" role="group" aria-labelledby="olLbl">
+            <button type="button" id="ol0" aria-pressed="true">Off</button>
+            <button type="button" id="ol1" aria-pressed="false">On</button>
+          </div>
+        </div>
+        <div class="ctl"><span class="lbl"><span>LPs receive the rest</span> <output id="lpOut"></output></span></div>
+        <details class="adv">
+          <summary>Advanced - revenue curve, calibration basis</summary>
+          <div class="ctl">
+            <label for="ml"><span>Spread at low volume <span class="help" data-tip="What the pool earns per dollar traded when volume is small and flow is mostly benign (aka m_left), in bps. Can be negative - loss-making entry flow.&#10;For stables/majors/alts its Flow-basis value also sets the push-trigger default (half of it); volatile/memes use half the quoted spread instead.">?</span></span> <output id="mlOut"></output></label>
+            <input type="range" id="ml" min="-10" max="150" step="0.1" value="1.1">
+          </div>
+          <div class="ctl">
+            <label for="mr"><span>Spread at high volume <span class="help" data-tip="What is left per dollar at scale, when arbitrageurs and informed flow dominate (aka m_right), in bps.&#10;Can be negative: past some point the extra flow costs you money.">?</span></span> <output id="mrOut"></output></label>
+            <input type="range" id="mr" min="-10" max="30" step="0.05" value="0.1">
+          </div>
+          <div class="ctl">
+            <label for="vhalf"><span>Volume where spread compresses <span class="help" data-tip="The daily volume at which the spread sits halfway between its low- and high-volume levels (aka V&#189;) - how much flow your pricing power survives.&#10;The least reliable fit (&plusmn;100% CI) - re-fit from your own pool data when possible.">?</span></span> <output id="vhalfOut"></output></label>
+            <input type="range" id="vhalf" min="0" max="100" step="any" value="46.13">
+          </div>
+          <div class="ctl">
+            <span class="lbl" id="basisLbl"><span>Fitted to <span class="help" data-tip="Which P&L the revenue defaults are fitted to: Flow = spread capture only, MTM = Flow + inventory revaluation (default).&#10;MTM is path-dependent and can accumulate phantom positions over long windows - our source data uses reset-binned windows to limit this.&#10;Volatile/memes is MTM only - with no reference price, Flow P&amp;L is not defined for these tokens, so the toggle is locked.">?</span></span></span>
+            <div class="seg" role="group" aria-labelledby="basisLbl">
+              <button type="button" id="bs0" aria-pressed="false">Flow</button>
+              <button type="button" id="bs1" aria-pressed="true">MTM</button>
+            </div>
+          </div>
+        </details>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN ============ -->
+    <div class="main">
+      <div class="gas-readout" id="gasReadout"></div>
+
+      <div class="tiles">
+        <div class="tile">
+          <div class="lbl">Owner break-even volume</div>
+          <div class="val" id="t1v">-</div>
+          <div class="sub" id="t1s"></div>
+        </div>
+        <div class="tile">
+          <div class="lbl">Owner net at your V</div>
+          <div class="val" id="t2v">-</div>
+          <div class="sub" id="t2s"></div>
+        </div>
+        <div class="tile">
+          <div class="lbl" id="t3l">Gross P&L at your V</div>
+          <div class="val" id="t3v">-</div>
+          <div class="sub" id="t3s"></div>
+        </div>
+        <div class="tile">
+          <div class="lbl">Margin at break-even</div>
+          <div class="val" id="t4v">-</div>
+          <div class="sub" id="t4s">bp</div>
+        </div>
+        <div class="tile">
+          <div class="lbl">Owner cost stack</div>
+          <div class="val" id="t5v">-</div>
+          <div class="sub" id="t5s"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Daily revenue vs volume</h2>
+            <p class="desc">Pool-owner revenue (his share of P&L) vs his cost stack. Green/red = owner net. Break-even marked where owner revenue crosses cost.</p>
+          </div>
+          <div class="scale-seg" role="group" aria-label="X axis scale">
+            <button type="button" id="scaleLin" aria-pressed="true">Linear</button>
+            <button type="button" id="scaleLog" aria-pressed="false">Log</button>
+          </div>
+        </div>
+        <div class="legend">
+          <span class="lg"><span class="key-line"></span>owner revenue</span>
+          <span class="lg"><span class="key-dash"></span>total cost</span>
+          <span class="lg"><span class="key-rect" style="background:var(--wash-good)"></span>net positive</span>
+          <span class="lg"><span class="key-rect" style="background:var(--wash-bad)"></span>net negative</span>
+        </div>
+        <svg id="chart" viewBox="0 0 920 380" role="img" aria-label="Daily gross revenue versus volume with cost line and break-even markers"></svg>
+      </div>
+
+      <details class="margins" id="marginDetails">
+        <summary>Margin charts - net margin and marginal revenue vs volume</summary>
+        <div class="margin-grid">
+          <div class="card">
+            <h2>Net margin vs volume</h2>
+            <p class="desc">margin_bp(V) - what you keep per dollar traded at volume V</p>
+            <svg id="marChart" viewBox="0 0 560 300" role="img" aria-label="Net margin versus volume"></svg>
+          </div>
+          <div class="card">
+            <h2>Marginal revenue vs volume</h2>
+            <p class="desc">dRevenue/dV in bp - what the next dollar of volume adds. Below 0 = growth destroys revenue</p>
+            <svg id="mrChart" viewBox="0 0 560 300" role="img" aria-label="Marginal revenue per extra dollar of volume"></svg>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tooltip">
+    <div class="tt-x" id="ttX"></div>
+    <div id="ttRows"></div>
+  </div>
+
+  <script type="module" src="costs_simulator.js"></script>
+</body>
+</html>
