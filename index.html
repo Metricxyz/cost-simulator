@@ -26,7 +26,7 @@
     come from real pools measured across several chains, and every input is adjustable - with finer
     controls tucked under each Advanced section.
   </p>
-  <p class="intro"><b>These are estimates, not an offer.</b> Defaults are calibrated as of September 2026 and will drift as chains and markets move.</p>
+  <p class="intro"><b>These are estimates, not an offer.</b> Defaults are calibrated as of October 2026 and will drift as chains and markets move.</p>
   <div class="layout">
     <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
@@ -137,15 +137,15 @@
       <div class="group">
         <h3>Revenue</h3>
         <div class="ctl">
-          <label for="prot"><span>Protocol fee <span class="help" data-tip="The protocol's cut off gross P&L. Default 20% = the V2 factory default (measured on-chain); deployed configs range 0-20% - V1 pools ran 0% protocol.">?</span></span> <output id="protOut"></output></label>
-          <input type="range" id="prot" min="0" max="30" step="1" value="20">
+          <label for="prot"><span>Protocol fee <span class="help" data-tip="The protocol's cut off gross P&L. Default 15% = the current factory default (measured on-chain); the earlier V2 factory shipped 20% and V1 pools ran 0% - deployed configs range 0-20%.">?</span></span> <output id="protOut"></output></label>
+          <input type="range" id="prot" min="0" max="30" step="1" value="15">
         </div>
         <div class="ctl">
           <label for="own"><span>Pool owner share <span class="help" data-tip="The pool creator's cut, taken from gross P&L on top of the protocol fee (e.g. 20% + 10% = 30% total; LPs get the remaining 70%).&#10;This is the dashboard's perspective: the owner's cut must cover the full pusher cost stack. Range 0-20%.">?</span></span> <output id="ownOut"></output></label>
           <input type="range" id="own" min="0" max="20" step="1" value="10">
         </div>
         <div class="ctl">
-          <span class="lbl" id="olLbl"><span>Owner is the LP <span class="help" data-tip="The pool owner also provides all the liquidity himself.&#10;The LP share collapses into the owner: he receives everything except the protocol fee, and still pays the full pusher cost stack.&#10;The owner-share slider is ignored while this is on.">?</span></span></span>
+          <span class="lbl" id="olLbl"><span>Owner is the LP <span class="help" data-tip="The pool owner also provides all the liquidity.&#10;The LP share collapses into the owner, who receives everything except the protocol fee and still pays the full pusher cost stack.&#10;The owner-share slider is ignored while this is on.">?</span></span></span>
           <div class="seg" role="group" aria-labelledby="olLbl">
             <button type="button" id="ol0" aria-pressed="true">Off</button>
             <button type="button" id="ol1" aria-pressed="false">On</button>
@@ -213,7 +213,7 @@
         <div class="card-head">
           <div>
             <h2>Daily revenue vs volume</h2>
-            <p class="desc">Pool-owner revenue (his share of P&L) vs his cost stack. Green/red = owner net. Break-even marked where owner revenue crosses cost.</p>
+            <p class="desc">Pool-owner revenue (the owner's share of P&L) vs the owner's cost stack. Green/red = owner net. Break-even marked where owner revenue crosses cost.</p>
           </div>
           <div class="scale-seg" role="group" aria-label="X axis scale">
             <button type="button" id="scaleLin" aria-pressed="true">Linear</button>

@@ -87,7 +87,7 @@
   const state = {
     chain: 'base', pclass: 'majors', regime: 1, basis: 'mtm', logScale: false,
     tolPos: 66.67, appTolPos: 66.67, mL: 1.1, mR: 0.2, vhPos: 46.13, vcurFrac: 0.254,
-    compressedOn: true, app: 1, protPct: 20, ownPct: 10, ownerIsLp: false, fpp: 2,
+    compressedOn: true, app: 1, protPct: 15, ownPct: 10, ownerIsLp: false, fpp: 2,
     swapCond: false, scshPos: 50,
     fp: 1, c: 0, baseFee: 0.005, native: 2500,
   };
@@ -547,8 +547,9 @@
     if (!scOk && state.swapCond) { state.swapCond = false; $('sc1').setAttribute('aria-pressed', false); $('sc0').setAttribute('aria-pressed', true); }
     $('sc0').disabled = !scOk; $('sc1').disabled = !scOk;
     $('scsh').disabled = !scOk || !state.swapCond;
-    state.baseFee = +$('basefee').value || 0;
-    state.native = +$('native').value || 0;
+
+    state.baseFee = Math.max(0, +$('basefee').value || 0);
+    state.native = Math.max(0, +$('native').value || 0);
 
     const p = params();
     const chR = CHAINS[state.chain];
