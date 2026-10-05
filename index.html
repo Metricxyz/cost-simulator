@@ -4,20 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Costs Simulator</title>
-    <script>
-      (function() {
-        var stored = null;
-        try { stored = window.localStorage.getItem("dashboard-theme"); } catch (err) {}
-        var theme = stored === "dark" || stored === "light"
-          ? stored
-          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-        document.documentElement.dataset.theme = theme;
-        document.documentElement.style.colorScheme = theme;
-      })();
-    </script>
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#161616" />
+    <link rel="preload" href="fonts/inter-variable.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="fonts/gridnik-medium.otf" as="font" type="font/otf" crossorigin />
     <link rel="stylesheet" href="costs_simulator.css" />
   </head>
 <body>
+  <div class="page">
   <h1>Costs Simulator</h1>
   <p class="intro">
     Estimate what running a liquidity pool could pay you. Pick a chain and token type and set the
@@ -245,6 +239,8 @@
         </div>
       </details>
     </div>
+  </div>
+
   </div>
 
   <div class="tooltip" id="tooltip">
